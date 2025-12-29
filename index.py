@@ -21,6 +21,8 @@ from tkinter import ttk
 import ctypes
 import requests as rq
 import os
+import shutil
+import uuid
 
 server = "serverp.furtorch.heili.tech"
 
@@ -30,7 +32,8 @@ if not os.path.exists("config.json"):
         config_data = {
             "opacity": 1.0,
             "tax": 0,
-            "user": ""
+            "user": "",
+            "standalone": False
         }
         json.dump(config_data, f, ensure_ascii=False, indent=4)
 
@@ -368,6 +371,12 @@ def scan_for_bag_changes(text):
             current_totals[item_id] = 0
         current_totals[item_id] += qty
     
+    # If we had no previous totals (likely first scan), treat this snapshot as baseline
+    if sum(previous_totals.values()) == 0 and sum(current_totals.values()) > 0:
+        # Avoid large false-positive drops on first observed update
+        bag_state.update(current_state)
+        return []
+
     # Compare total counts to detect drops, even across stacks
     for item_id, current_total in current_totals.items():
         previous_total = previous_totals.get(item_id, 0)
@@ -397,6 +406,16 @@ def get_user():
     """Get or register user ID"""
     with open("config.json", "r", encoding="utf-8") as f:
         config_data = json.load(f)
+
+    # If running in standalone mode, don't contact server — generate or reuse a local UUID
+    if config_data.get("standalone", False):
+        if not config_data.get("user"):
+            config_data["user"] = str(uuid.uuid4())
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=4)
+        return config_data["user"]
+
+    # Network mode: register/get from server if missing
     if not config_data.get("user", False):
         try:
             r = rq.get(f"http://{server}/reg", timeout=10).json()
@@ -412,6 +431,11 @@ def get_user():
 
 def price_submit(ids, price, user):
     try:
+        with open("config.json", "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        if cfg.get("standalone", False):
+            print(f"Standalone mode: skipping price submit for {ids}={price}")
+            return None
         r = rq.get(f"http://{server}/submit?user={user}&ids={ids}&new_price={price}", timeout=10).json()
         print(r)
         return r
@@ -420,29 +444,115 @@ def price_submit(ids, price, user):
 
 def initialize_data_files():
     """Initialize the English data files"""
-    # Check if we need to create full_table.json from en_id_table.json
+    # Create full_table.json from en_id_table.json if missing
     if os.path.exists("en_id_table.json") and not os.path.exists("full_table.json"):
         try:
-            # Load English ID table
             with open("en_id_table.json", 'r', encoding="utf-8") as f:
                 english_items = json.load(f)
-                
-            # Create initial full_table.json with prices set to 0
             full_table = {}
             for item_id, item_data in english_items.items():
                 full_table[item_id] = {
-                    "name": item_data["name"],
-                    "type": item_data["type"],
+                    "name": item_data.get("name", ""),
+                    "type": item_data.get("type", ""),
                     "price": 0
                 }
-                
-            # Save the initial full_table.json
             with open("full_table.json", 'w', encoding="utf-8") as f:
                 json.dump(full_table, f, indent=4, ensure_ascii=False)
-                
             print("Created initial full_table.json from en_id_table.json")
         except Exception as e:
             print(f"Error initializing data files: {e}")
+
+    # Always apply local overrides/overlays so the app can be standalone and editable locally
+    try:
+        if os.path.exists("full_table.json"):
+            with open("full_table.json", 'r', encoding="utf-8") as f:
+                full = json.load(f)
+            changed = False
+
+            # 1) Overlay en_id_table.json (prefer local English table for names/types)
+            if os.path.exists("en_id_table.json"):
+                try:
+                    with open("en_id_table.json", 'r', encoding="utf-8") as f:
+                        en_table = json.load(f)
+                    for item_id, en_entry in en_table.items():
+                        if item_id in full:
+                            if en_entry.get("name") and full[item_id].get("name") != en_entry.get("name"):
+                                full[item_id]["name"] = en_entry.get("name")
+                                changed = True
+                            if en_entry.get("type") and full[item_id].get("type") != en_entry.get("type"):
+                                full[item_id]["type"] = en_entry.get("type")
+                                changed = True
+                        else:
+                            # Add missing entries from en_id_table
+                            full[item_id] = {
+                                "name": en_entry.get("name", ""),
+                                "type": en_entry.get("type", ""),
+                                "price": en_entry.get("price", 0) if isinstance(en_entry, dict) else 0
+                            }
+                            changed = True
+                except Exception:
+                    pass
+
+            # 2) Apply translation_mapping.json (Chinese -> English) if present
+            if os.path.exists("translation_mapping.json"):
+                try:
+                    with open("translation_mapping.json", 'r', encoding="utf-8") as f:
+                        trans = json.load(f)
+                    for item_id, entry in full.items():
+                        # candidate Chinese fields
+                        cn = None
+                        for k in ("cn_name", "zh", "zh_name", "localName"):
+                            if k in entry and isinstance(entry[k], str) and entry[k].strip():
+                                cn = entry[k]
+                                break
+                        # If current name looks like Chinese, try that too
+                        cur = entry.get("name", "")
+                        if not cn and cur and any('\u4e00' <= ch <= '\u9fff' for ch in cur):
+                            cn = cur
+                        if cn and cn in trans:
+                            en = trans[cn]
+                            if entry.get("name") != en:
+                                full[item_id]["name"] = en
+                                changed = True
+                except Exception:
+                    pass
+
+            # 3) Apply price overrides from price.json (accept either id->price or name->price)
+            if os.path.exists("price.json"):
+                try:
+                    with open("price.json", 'r', encoding="utf-8") as f:
+                        price_overrides = json.load(f)
+                    for key, val in price_overrides.items():
+                        try:
+                            # numeric key -> item id
+                            if str(key) in full:
+                                newp = float(val)
+                                if full[str(key)].get("price") != newp:
+                                    full[str(key)]["price"] = newp
+                                    changed = True
+                            else:
+                                # treat key as item name
+                                for item_id, entry in full.items():
+                                    if entry.get("name") == key:
+                                        newp = float(val)
+                                        if entry.get("price") != newp:
+                                            full[item_id]["price"] = newp
+                                            changed = True
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+
+            if changed:
+                try:
+                    shutil.copyfile("full_table.json", "full_table.json.bak")
+                except Exception:
+                    pass
+                with open("full_table.json", 'w', encoding="utf-8") as f:
+                    json.dump(full, f, indent=4, ensure_ascii=False)
+                print("Applied local overrides to full_table.json")
+    except Exception as e:
+        print(f"Failed to apply local overrides: {e}")
 
 # Track bag state and initialization status
 bag_state = {}
@@ -1161,7 +1271,16 @@ MyThread().start()
 
 # Start the price update thread
 import _thread
-_thread.start_new_thread(price_update, ())
+try:
+    with open("config.json", "r", encoding="utf-8") as f:
+        _cfg = json.load(f)
+except Exception:
+    _cfg = {}
+
+if not _cfg.get("standalone", False):
+    _thread.start_new_thread(price_update, ())
+else:
+    print("Standalone mode enabled: skipping remote price updates")
 
 # Start the main loop
 root.mainloop()
