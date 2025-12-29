@@ -3,5 +3,6 @@
     "opacity": 1.0,
     "tax": 1,
     "user": "4daa2fc5-9df9-4dc3-a90d-0575339833cc",
-    "standalone": true
+    "standalone": true,
+    "rate_unit": 1
 }
