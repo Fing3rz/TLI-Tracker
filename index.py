@@ -134,43 +134,48 @@ def apply_local_overrides():
         full = json.load(f)
     changed = False
 
-    # Overlay en_id_table.json
+    # Overlay en_id_table.json — only add missing entries; do NOT overwrite existing full_table values
     if os.path.exists("en_id_table.json"):
         try:
             with open("en_id_table.json", 'r', encoding="utf-8") as f:
                 en_table = json.load(f)
             for item_id, en_entry in en_table.items():
-                if item_id in full:
-                    if en_entry.get("name") and full[item_id].get("name") != en_entry.get("name"):
-                        full[item_id]["name"] = en_entry.get("name")
-                        changed = True
-                    if en_entry.get("type") and full[item_id].get("type") != en_entry.get("type"):
-                        full[item_id]["type"] = en_entry.get("type")
-                        changed = True
-                else:
+                if item_id not in full:
+                    # add missing entry from en_table
                     full[item_id] = {
                         "name": en_entry.get("name", ""),
                         "type": en_entry.get("type", ""),
                         "price": en_entry.get("price", 0) if isinstance(en_entry, dict) else 0
                     }
                     changed = True
+                else:
+                    # ensure type exists if missing, but do not overwrite name/price
+                    if not full[item_id].get("type") and en_entry.get("type"):
+                        full[item_id]["type"] = en_entry.get("type")
+                        changed = True
         except Exception:
             pass
 
-    # Apply translation mapping
+    # Apply translation mapping — only set name when full_table name is empty or contains CJK characters
     if os.path.exists("translation_mapping.json"):
         try:
             with open("translation_mapping.json", 'r', encoding="utf-8") as f:
                 trans = json.load(f)
             for item_id, entry in full.items():
+                current_name = entry.get("name", "")
+                needs_translation = False
+                if not current_name or any('\u4e00' <= ch <= '\u9fff' for ch in current_name):
+                    needs_translation = True
+                if not needs_translation:
+                    continue
+                # find candidate Chinese source
                 cn = None
                 for k in ("cn_name", "zh", "zh_name", "localName"):
                     if k in entry and isinstance(entry[k], str) and entry[k].strip():
                         cn = entry[k]
                         break
-                cur = entry.get("name", "")
-                if not cn and cur and any('\u4e00' <= ch <= '\u9fff' for ch in cur):
-                    cn = cur
+                if not cn and current_name and any('\u4e00' <= ch <= '\u9fff' for ch in current_name):
+                    cn = current_name
                 if cn and cn in trans:
                     en = trans[cn]
                     if entry.get("name") != en:

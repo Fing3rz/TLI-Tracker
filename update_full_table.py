@@ -33,19 +33,18 @@ else:
         en = json.load(f)
     data = {k: {"name": v.get("name", ""), "type": v.get("type", ""), "price": 0} for k, v in en.items()}
 
-# Overlay en_id_table.json (fill names/types and add missing ids)
+# Overlay en_id_table.json — only add missing ids and fill missing types; do NOT overwrite existing names/prices
 if os.path.exists(EN):
     try:
         with open(EN, "r", encoding="utf-8") as f:
             en = json.load(f)
         for item_id, en_entry in en.items():
-            if item_id in data:
-                if en_entry.get("name"):
-                    data[item_id]["name"] = en_entry.get("name")
-                if en_entry.get("type"):
-                    data[item_id]["type"] = en_entry.get("type")
-            else:
+            if item_id not in data:
                 data[item_id] = {"name": en_entry.get("name", ""), "type": en_entry.get("type", ""), "price": en_entry.get("price", 0) if isinstance(en_entry, dict) else 0}
+            else:
+                # only fill missing type
+                if not data[item_id].get("type") and en_entry.get("type"):
+                    data[item_id]["type"] = en_entry.get("type")
     except Exception as e:
         print("Warning: failed to overlay en_id_table.json:", e)
 
@@ -56,8 +55,8 @@ if os.path.exists(TRANS):
             trans = json.load(f)
         for item_id, entry in data.items():
             cur_name = entry.get("name", "")
-            # If name contains CJK characters, try to translate
-            if cur_name and any('\u4e00' <= ch <= '\u9fff' for ch in cur_name):
+            # Only translate if name is empty or contains CJK characters
+            if not cur_name or any('\u4e00' <= ch <= '\u9fff' for ch in cur_name):
                 if cur_name in trans:
                     entry["name"] = trans[cur_name]
     except Exception as e:
