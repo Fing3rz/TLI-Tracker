@@ -55,10 +55,11 @@ if os.path.exists(TRANS):
             trans = json.load(f)
         for item_id, entry in data.items():
             cur_name = entry.get("name", "")
-            # Only translate if name is empty or contains CJK characters
-            if not cur_name or any('\u4e00' <= ch <= '\u9fff' for ch in cur_name):
-                if cur_name in trans:
-                    entry["name"] = trans[cur_name]
+            # Only translate if name is empty — do not overwrite existing English names
+            if cur_name:
+                continue
+            if cur_name in trans:
+                entry["name"] = trans[cur_name]
     except Exception as e:
         print("Warning: failed to apply translation_mapping.json:", e)
 

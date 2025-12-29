@@ -156,17 +156,15 @@ def apply_local_overrides():
         except Exception:
             pass
 
-    # Apply translation mapping — only set name when full_table name is empty or contains CJK characters
+    # Apply translation mapping — only set name when full_table name is empty
     if os.path.exists("translation_mapping.json"):
         try:
             with open("translation_mapping.json", 'r', encoding="utf-8") as f:
                 trans = json.load(f)
             for item_id, entry in full.items():
                 current_name = entry.get("name", "")
-                needs_translation = False
-                if not current_name or any('\u4e00' <= ch <= '\u9fff' for ch in current_name):
-                    needs_translation = True
-                if not needs_translation:
+                # only translate when the full_table name is empty — do not overwrite existing English names
+                if current_name:
                     continue
                 # find candidate Chinese source
                 cn = None
@@ -174,8 +172,9 @@ def apply_local_overrides():
                     if k in entry and isinstance(entry[k], str) and entry[k].strip():
                         cn = entry[k]
                         break
-                if not cn and current_name and any('\u4e00' <= ch <= '\u9fff' for ch in current_name):
-                    cn = current_name
+                if not cn:
+                    # if the current name is empty there's no other candidate
+                    cn = None
                 if cn and cn in trans:
                     en = trans[cn]
                     if entry.get("name") != en:
