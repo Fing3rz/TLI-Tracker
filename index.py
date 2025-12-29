@@ -918,6 +918,9 @@ class App(Tk):
         # Refresh data button (apply local overrides into full_table.json)
         refresh_button = ttk.Button(self.inner_pannel_settings, text="Refresh Data", command=self.refresh_full_table)
         refresh_button.grid(row=3, column=0, columnspan=2, padx=5, pady=4)
+        # Small status indicator for last refresh
+        self.refresh_status_label = ttk.Label(self.inner_pannel_settings, text="", font=("Arial", 10))
+        self.refresh_status_label.grid(row=4, column=0, columnspan=2, padx=5, pady=2, sticky="w")
         
         # Setup default values
         self.scale_setting_2.set(config_data["opacity"])
@@ -1139,7 +1142,19 @@ class App(Tk):
             item_price = full_table[item_id]["price"]
             if config_data.get("tax", 0) == 1 and item_id != "100300":
                 item_price = item_price * 0.875
-            self.inner_pannel_drop_listbox.insert(END, f"{status} {item_name} x{tmp[i]} [{round(tmp[i] * item_price, 2)}]")
+            text = f"{status} {item_name} x{tmp[i]} [{round(tmp[i] * item_price, 2)}]"
+            # insert and colorize based on gain/consumption
+            idx = self.inner_pannel_drop_listbox.size()
+            self.inner_pannel_drop_listbox.insert(END, text)
+            try:
+                qty = tmp[i]
+                if qty > 0:
+                    fg = "#006400"  # dark green
+                else:
+                    fg = "#b20000"  # red
+                self.inner_pannel_drop_listbox.itemconfig(idx, fg=fg)
+            except Exception:
+                pass
 
     def refresh_full_table(self):
         """Apply local overrides and refresh UI."""
@@ -1149,9 +1164,16 @@ class App(Tk):
             with open("full_table.json", 'r', encoding="utf-8") as f:
                 _ = json.load(f)
             self.reshow()
-            messagebox.showinfo("Refresh Complete", "full_table.json refreshed from local sources.")
+            # update small status indicator
+            try:
+                self.refresh_status_label.config(text="Refresh succeeded", foreground="#006400")
+            except Exception:
+                pass
         except Exception as e:
-            messagebox.showerror("Refresh Failed", str(e))
+            try:
+                self.refresh_status_label.config(text=f"Refresh failed: {e}", foreground="#b20000")
+            except Exception:
+                pass
 
     def show_all_type(self):
         self.show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Divine Emblem","Overlap Material", "Hard Currency"]
