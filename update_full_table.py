@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""
-update_full_table.py
+"""update_full_table.py
 
 Force-apply local overrides into full_table.json so the app can be updated while running.
-- overlays: en_id_table.json, translation_mapping.json, price.json
+- overlays: en_id_table.json, translation_mapping.json
 - writes a backup full_table.json.bak before replacing
 - produces a minimal full_table.json containing only {name,type,price}
+
+Note: price.json is ignored in the standalone build. Edit `full_table.json` directly
+to change prices.
 
 Usage: python update_full_table.py
 """
@@ -17,7 +19,6 @@ ROOT = os.path.dirname(__file__)
 FULL = os.path.join(ROOT, "full_table.json")
 EN = os.path.join(ROOT, "en_id_table.json")
 TRANS = os.path.join(ROOT, "translation_mapping.json")
-PRICE = os.path.join(ROOT, "price.json")
 
 if not os.path.exists(FULL) and not os.path.exists(EN):
     print("Neither full_table.json nor en_id_table.json found. Nothing to do.")
@@ -62,26 +63,8 @@ if os.path.exists(TRANS):
     except Exception as e:
         print("Warning: failed to apply translation_mapping.json:", e)
 
-# Apply price overrides (id->price or name->price)
-if os.path.exists(PRICE):
-    try:
-        with open(PRICE, "r", encoding="utf-8") as f:
-            pmap = json.load(f)
-        for key, val in pmap.items():
-            try:
-                newp = float(val)
-            except Exception:
-                continue
-            # id key
-            if str(key) in data:
-                data[str(key)]["price"] = newp
-            else:
-                # name key
-                for item_id, entry in data.items():
-                    if entry.get("name") == key:
-                        entry["price"] = newp
-    except Exception as e:
-        print("Warning: failed to apply price.json:", e)
+# Note: prices are taken from full_table.json directly. If you want to update prices,
+# edit full_table.json itself; price.json is no longer used by the standalone build.
 
 # Produce minimal structure (strip unrelated fields)
 minimal = {}

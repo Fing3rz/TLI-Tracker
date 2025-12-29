@@ -124,8 +124,9 @@ def get_price_info(text):
 
 
 def apply_local_overrides():
-    """Apply overlays from en_id_table.json, translation_mapping.json and price.json into full_table.json
-    This can be run at startup or on demand while the app is running.
+    """Apply overlays from en_id_table.json and translation_mapping.json into full_table.json.
+    Prices in `full_table.json` are authoritative for standalone mode. This function no longer
+    reads or applies `price.json` — edit `full_table.json` directly to change prices.
     """
     if not os.path.exists("full_table.json"):
         return
@@ -178,29 +179,9 @@ def apply_local_overrides():
         except Exception:
             pass
 
-    # Apply price overrides
-    if os.path.exists("price.json"):
-        try:
-            with open("price.json", 'r', encoding="utf-8") as f:
-                price_overrides = json.load(f)
-            for key, val in price_overrides.items():
-                try:
-                    if str(key) in full:
-                        newp = float(val)
-                        if full[str(key)].get("price") != newp:
-                            full[str(key)]["price"] = newp
-                            changed = True
-                    else:
-                        for item_id, entry in full.items():
-                            if entry.get("name") == key:
-                                newp = float(val)
-                                if entry.get("price") != newp:
-                                    full[item_id]["price"] = newp
-                                    changed = True
-                except Exception:
-                    continue
-        except Exception:
-            pass
+    # Note: prices are taken from full_table.json directly in standalone mode.
+    # If you previously used price.json (Chinese source), remove it — the app will
+    # now ignore it and full_table.json is the single source of truth for prices.
 
     if changed:
         try:
