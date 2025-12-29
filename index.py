@@ -106,18 +106,26 @@ def get_price_info(text):
                 num_values = min(len(values), 30)
                 sum_values = sum(float(values[i]) for i in range(num_values))
                 average_value = sum_values / num_values
-                
-            with open("full_table.json", 'r', encoding="utf-8") as f:
-                full_table = json.load(f)
-                try:
+            # If no usable samples were found, skip updating the price
+            if average_value < 0:
+                print(f'Record found: ID:{ids}, no price samples')
+                continue
+
+            try:
+                with open("full_table.json", 'r', encoding="utf-8") as f:
+                    full_table = json.load(f)
+                if ids in full_table:
                     full_table[ids]['last_time'] = round(time.time())
                     full_table[ids]['from'] = "FurryHeiLi"
                     full_table[ids]['price'] = round(average_value, 4)
-                except:
-                    pass
-            with open("full_table.json", 'w', encoding="utf-8") as f:
-                json.dump(full_table, f, indent=4, ensure_ascii=False)
-            print(f'Updating item value: ID:{ids}, Name:{full_table[ids]["name"]}, Price:{round(average_value, 4)}')
+                    with open("full_table.json", 'w', encoding="utf-8") as f:
+                        json.dump(full_table, f, indent=4, ensure_ascii=False)
+                    print(f'Updating item value: ID:{ids}, Name:{full_table[ids].get("name","<unknown>")}, Price:{round(average_value, 4)}')
+                else:
+                    print(f'Record found: ID:{ids} not present in full_table.json')
+            except Exception as e:
+                print(f'Failed to update price for ID:{ids}: {e}')
+
             price_submit(ids, round(average_value, 4), get_user())
     except Exception as e:
         print(e)
