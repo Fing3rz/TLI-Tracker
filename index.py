@@ -122,6 +122,95 @@ def get_price_info(text):
     except Exception as e:
         print(e)
 
+
+def apply_local_overrides():
+    """Apply overlays from en_id_table.json, translation_mapping.json and price.json into full_table.json
+    This can be run at startup or on demand while the app is running.
+    """
+    if not os.path.exists("full_table.json"):
+        return
+    with open("full_table.json", 'r', encoding="utf-8") as f:
+        full = json.load(f)
+    changed = False
+
+    # Overlay en_id_table.json
+    if os.path.exists("en_id_table.json"):
+        try:
+            with open("en_id_table.json", 'r', encoding="utf-8") as f:
+                en_table = json.load(f)
+            for item_id, en_entry in en_table.items():
+                if item_id in full:
+                    if en_entry.get("name") and full[item_id].get("name") != en_entry.get("name"):
+                        full[item_id]["name"] = en_entry.get("name")
+                        changed = True
+                    if en_entry.get("type") and full[item_id].get("type") != en_entry.get("type"):
+                        full[item_id]["type"] = en_entry.get("type")
+                        changed = True
+                else:
+                    full[item_id] = {
+                        "name": en_entry.get("name", ""),
+                        "type": en_entry.get("type", ""),
+                        "price": en_entry.get("price", 0) if isinstance(en_entry, dict) else 0
+                    }
+                    changed = True
+        except Exception:
+            pass
+
+    # Apply translation mapping
+    if os.path.exists("translation_mapping.json"):
+        try:
+            with open("translation_mapping.json", 'r', encoding="utf-8") as f:
+                trans = json.load(f)
+            for item_id, entry in full.items():
+                cn = None
+                for k in ("cn_name", "zh", "zh_name", "localName"):
+                    if k in entry and isinstance(entry[k], str) and entry[k].strip():
+                        cn = entry[k]
+                        break
+                cur = entry.get("name", "")
+                if not cn and cur and any('\u4e00' <= ch <= '\u9fff' for ch in cur):
+                    cn = cur
+                if cn and cn in trans:
+                    en = trans[cn]
+                    if entry.get("name") != en:
+                        full[item_id]["name"] = en
+                        changed = True
+        except Exception:
+            pass
+
+    # Apply price overrides
+    if os.path.exists("price.json"):
+        try:
+            with open("price.json", 'r', encoding="utf-8") as f:
+                price_overrides = json.load(f)
+            for key, val in price_overrides.items():
+                try:
+                    if str(key) in full:
+                        newp = float(val)
+                        if full[str(key)].get("price") != newp:
+                            full[str(key)]["price"] = newp
+                            changed = True
+                    else:
+                        for item_id, entry in full.items():
+                            if entry.get("name") == key:
+                                newp = float(val)
+                                if entry.get("price") != newp:
+                                    full[item_id]["price"] = newp
+                                    changed = True
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if changed:
+        try:
+            shutil.copyfile("full_table.json", "full_table.json.bak")
+        except Exception:
+            pass
+        with open("full_table.json", 'w', encoding="utf-8") as f:
+            json.dump(full, f, indent=4, ensure_ascii=False)
+        print("Applied local overrides to full_table.json")
+
 def initialize_bag_state(text):
     """Initialize the bag state by scanning all current items (legacy method)"""
     global bag_state, bag_initialized, first_scan
@@ -460,95 +549,9 @@ def initialize_data_files():
         except Exception as e:
             print(f"Error initializing data files: {e}")
 
-    # Always apply local overrides/overlays so the app can be standalone and editable locally
+    # Apply local overrides into full_table.json (kept in a separate function)
     try:
-        if os.path.exists("full_table.json"):
-            with open("full_table.json", 'r', encoding="utf-8") as f:
-                full = json.load(f)
-            changed = False
-
-            # 1) Overlay en_id_table.json (prefer local English table for names/types)
-            if os.path.exists("en_id_table.json"):
-                try:
-                    with open("en_id_table.json", 'r', encoding="utf-8") as f:
-                        en_table = json.load(f)
-                    for item_id, en_entry in en_table.items():
-                        if item_id in full:
-                            if en_entry.get("name") and full[item_id].get("name") != en_entry.get("name"):
-                                full[item_id]["name"] = en_entry.get("name")
-                                changed = True
-                            if en_entry.get("type") and full[item_id].get("type") != en_entry.get("type"):
-                                full[item_id]["type"] = en_entry.get("type")
-                                changed = True
-                        else:
-                            # Add missing entries from en_id_table
-                            full[item_id] = {
-                                "name": en_entry.get("name", ""),
-                                "type": en_entry.get("type", ""),
-                                "price": en_entry.get("price", 0) if isinstance(en_entry, dict) else 0
-                            }
-                            changed = True
-                except Exception:
-                    pass
-
-            # 2) Apply translation_mapping.json (Chinese -> English) if present
-            if os.path.exists("translation_mapping.json"):
-                try:
-                    with open("translation_mapping.json", 'r', encoding="utf-8") as f:
-                        trans = json.load(f)
-                    for item_id, entry in full.items():
-                        # candidate Chinese fields
-                        cn = None
-                        for k in ("cn_name", "zh", "zh_name", "localName"):
-                            if k in entry and isinstance(entry[k], str) and entry[k].strip():
-                                cn = entry[k]
-                                break
-                        # If current name looks like Chinese, try that too
-                        cur = entry.get("name", "")
-                        if not cn and cur and any('\u4e00' <= ch <= '\u9fff' for ch in cur):
-                            cn = cur
-                        if cn and cn in trans:
-                            en = trans[cn]
-                            if entry.get("name") != en:
-                                full[item_id]["name"] = en
-                                changed = True
-                except Exception:
-                    pass
-
-            # 3) Apply price overrides from price.json (accept either id->price or name->price)
-            if os.path.exists("price.json"):
-                try:
-                    with open("price.json", 'r', encoding="utf-8") as f:
-                        price_overrides = json.load(f)
-                    for key, val in price_overrides.items():
-                        try:
-                            # numeric key -> item id
-                            if str(key) in full:
-                                newp = float(val)
-                                if full[str(key)].get("price") != newp:
-                                    full[str(key)]["price"] = newp
-                                    changed = True
-                            else:
-                                # treat key as item name
-                                for item_id, entry in full.items():
-                                    if entry.get("name") == key:
-                                        newp = float(val)
-                                        if entry.get("price") != newp:
-                                            full[item_id]["price"] = newp
-                                            changed = True
-                        except Exception:
-                            continue
-                except Exception:
-                    pass
-
-            if changed:
-                try:
-                    shutil.copyfile("full_table.json", "full_table.json.bak")
-                except Exception:
-                    pass
-                with open("full_table.json", 'w', encoding="utf-8") as f:
-                    json.dump(full, f, indent=4, ensure_ascii=False)
-                print("Applied local overrides to full_table.json")
+        apply_local_overrides()
     except Exception as e:
         print(f"Failed to apply local overrides: {e}")
 
@@ -911,6 +914,10 @@ class App(Tk):
         # Reset button
         reset_button = ttk.Button(self.inner_pannel_settings, text="Reset Tracking", command=self.reset_tracking)
         reset_button.grid(row=2, column=0, columnspan=2, padx=5, pady=10)
+
+        # Refresh data button (apply local overrides into full_table.json)
+        refresh_button = ttk.Button(self.inner_pannel_settings, text="Refresh Data", command=self.refresh_full_table)
+        refresh_button.grid(row=3, column=0, columnspan=2, padx=5, pady=4)
         
         # Setup default values
         self.scale_setting_2.set(config_data["opacity"])
@@ -1133,6 +1140,18 @@ class App(Tk):
             if config_data.get("tax", 0) == 1 and item_id != "100300":
                 item_price = item_price * 0.875
             self.inner_pannel_drop_listbox.insert(END, f"{status} {item_name} x{tmp[i]} [{round(tmp[i] * item_price, 2)}]")
+
+    def refresh_full_table(self):
+        """Apply local overrides and refresh UI."""
+        try:
+            apply_local_overrides()
+            # reload full_table.json into memory for UI
+            with open("full_table.json", 'r', encoding="utf-8") as f:
+                _ = json.load(f)
+            self.reshow()
+            messagebox.showinfo("Refresh Complete", "full_table.json refreshed from local sources.")
+        except Exception as e:
+            messagebox.showerror("Refresh Failed", str(e))
 
     def show_all_type(self):
         self.show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Divine Emblem","Overlap Material", "Hard Currency"]
