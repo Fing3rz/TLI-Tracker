@@ -121,6 +121,11 @@ def get_price_info(text):
                     with open("full_table.json", 'w', encoding="utf-8") as f:
                         json.dump(full_table, f, indent=4, ensure_ascii=False)
                     print(f'Updating item value: ID:{ids}, Name:{full_table[ids].get("name","<unknown>")}, Price:{round(average_value, 4)}')
+                    # Schedule UI refresh on main thread so updated prices show immediately
+                    try:
+                        root.after(0, lambda: root.reshow())
+                    except Exception:
+                        pass
                 else:
                     print(f'Record found: ID:{ids} not present in full_table.json')
             except Exception as e:
