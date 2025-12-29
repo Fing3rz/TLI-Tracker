@@ -885,6 +885,8 @@ class App(Tk):
         
         self.inner_pannel_drop_listbox = inner_pannel_drop_listbox
         self.inner_pannel_drop_scroll = inner_pannel_drop_scroll
+        # track currently displayed item ids (same order as listbox entries)
+        self._list_item_ids = []
         self.button_change = button_change
         self.words_short = words_short
         self.label_current_time = label_current_time
@@ -1136,6 +1138,7 @@ class App(Tk):
         else:
             tmp = drop_list
             self.label_current_earn.config(text=f"🔥 {round(income, 2)}")
+        self._list_item_ids = []
         self.inner_pannel_drop_listbox.delete(1, END)
         for i in tmp.keys():
             item_id = str(i)
@@ -1161,6 +1164,8 @@ class App(Tk):
             text = f"{status} {item_name} x{tmp[i]} [{round(tmp[i] * item_price, 2)}]"
             # insert and colorize based on gain/consumption
             idx = self.inner_pannel_drop_listbox.size()
+            # record mapping and insert
+            self._list_item_ids.append(item_id)
             self.inner_pannel_drop_listbox.insert(END, text)
             try:
                 qty = tmp[i]
@@ -1171,6 +1176,67 @@ class App(Tk):
                 self.inner_pannel_drop_listbox.itemconfig(idx, fg=fg)
             except Exception:
                 pass
+
+    def update_single_drop(self, item_id):
+        """Update a single displayed drop line for item_id if present."""
+        try:
+            item_id = str(item_id)
+            # which dict is currently displayed
+            if show_all:
+                tmp = drop_list_all
+            else:
+                tmp = drop_list
+
+            if item_id not in self._list_item_ids:
+                return
+            idx = self._list_item_ids.index(item_id)
+
+            with open("full_table.json", 'r', encoding="utf-8") as f:
+                full_table = json.load(f)
+
+            if item_id not in full_table:
+                return
+
+            item_name = full_table[item_id].get("name", "<unknown>")
+            item_type = full_table[item_id].get("type", "")
+            if item_type not in self.show_type:
+                # remove line
+                try:
+                    self.inner_pannel_drop_listbox.delete(idx)
+                    self._list_item_ids.pop(idx)
+                except Exception:
+                    pass
+                return
+
+            now = time.time()
+            last_time = full_table[item_id].get("last_update", 0)
+            time_passed = now - last_time
+            if time_passed < 180:
+                status = self.status[0]
+            elif time_passed < 900:
+                status = self.status[1]
+            else:
+                status = self.status[2]
+
+            item_price = full_table[item_id].get("price", 0)
+            if config_data.get("tax", 0) == 1 and item_id != "100300":
+                item_price = item_price * 0.875
+
+            qty = tmp.get(item_id, 0)
+            text = f"{status} {item_name} x{qty} [{round(qty * item_price, 2)}]"
+
+            try:
+                self.inner_pannel_drop_listbox.delete(idx)
+                self.inner_pannel_drop_listbox.insert(idx, text)
+                if qty > 0:
+                    fg = "#006400"
+                else:
+                    fg = "#b20000"
+                self.inner_pannel_drop_listbox.itemconfig(idx, fg=fg)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def refresh_full_table(self):
         """Apply local overrides and refresh UI."""
