@@ -226,6 +226,24 @@ def initialize_bag_state(text):
             bag_state[item_key] = num
             
         bag_initialized = True
+        # Treat this as a complete initialization so downstream code doesn't
+        # misinterpret the first observed snapshot as drops.
+        try:
+            # Build totals and store as init: keys
+            item_totals = {}
+            for key, qty in bag_state.items():
+                if ":" not in key:
+                    continue
+                parts = key.split(":")
+                if len(parts) != 3:
+                    continue
+                _, _, item_id = parts
+                item_totals[item_id] = item_totals.get(item_id, 0) + qty
+            for item_id, total in item_totals.items():
+                bag_state[f"init:{item_id}"] = total
+        except Exception:
+            pass
+        initialization_complete = True
         return True
     
     return False
