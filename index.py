@@ -820,8 +820,7 @@ class App(Tk):
     def __init__(self):
         super().__init__()
         self.title("FurTorch v0.0.2 - English")
-        self.geometry()
-
+        self.geometry("700x400")
         ctypes.windll.shcore.SetProcessDpiAwareness(1)
         # Call API to get current scaling factor
         ScaleFactor = ctypes.windll.shcore.GetScaleFactorForDevice(0)
@@ -829,14 +828,12 @@ class App(Tk):
         self.tk.call('tk', 'scaling', ScaleFactor / 75)
         basic_frame = ttk.Frame(self)
         advanced_frame = ttk.Frame(self)
-        basic_frame.pack(side="top", fill="both")
-        advanced_frame.pack(side="top", fill="both")
+        basic_frame.pack(side="top", fill="both", expand=True)
+        advanced_frame.pack(side="top", fill="both", expand=True)
         self.basic_frame = basic_frame
         self.advanced_frame = advanced_frame
-        # Remove maximize button
-        self.resizable(False, False)
-        # Remove minimize button
-        self.attributes('-toolwindow', True)
+        # Allow window to be resized (enable maximize/minimize)
+        self.resizable(True, True)
         # Set red color
         basic_frame.config(style="Red.TFrame")
         advanced_frame.config(style="Blue.TFrame")
@@ -855,12 +852,19 @@ class App(Tk):
         label_map_count.grid(row=0, column=2, padx=5, sticky="w")
         label_current_earn = ttk.Label(basic_frame, text="🔥 0", font=("Arial", 14))
         label_current_earn.grid(row=1, column=2, padx=5, sticky="w")
-        inner_pannel_drop_listbox = Listbox(advanced_frame, height=15, width=45, font=("Arial", 10))
-        inner_pannel_drop_listbox.insert(END, "Drops will be displayed here")
+        # Use a wrapping Text widget instead of Listbox so long names wrap instead of getting cut off
+        inner_pannel_drop_listbox = Text(advanced_frame, height=15, wrap='word', font=("Arial", 10))
+        inner_pannel_drop_listbox.insert("1.0", "Drops will be displayed here")
         inner_pannel_drop_listbox.grid(row=0, column=0, columnspan=6, sticky="nsew")
         inner_pannel_drop_scroll = ttk.Scrollbar(advanced_frame, command=inner_pannel_drop_listbox.yview, orient="vertical")
         inner_pannel_drop_scroll.grid(row=0, column=6, sticky="ns")
         inner_pannel_drop_listbox.config(yscrollcommand=inner_pannel_drop_scroll.set)
+        # Make the text widget read-only by default
+        inner_pannel_drop_listbox.config(state='disabled')
+        # Configure grid weights so the list area expands when window is resized
+        advanced_frame.grid_rowconfigure(0, weight=1)
+        for col in range(6):
+            advanced_frame.grid_columnconfigure(col, weight=1)
         words_short = StringVar()
         words_short.set("Current Map")
         button_drops = ttk.Button(advanced_frame, text="Drops", cursor="hand2", width=7)
@@ -899,10 +903,9 @@ class App(Tk):
         # Create child windows
         self.inner_pannel_settings = Toplevel(self)
         self.inner_pannel_settings.title("Settings")
-        self.inner_pannel_settings.geometry()
-        # Hide maximize and minimize buttons
-        self.inner_pannel_settings.resizable(False, False)
-        self.inner_pannel_settings.attributes('-toolwindow', True)
+        self.inner_pannel_settings.geometry("400x300+0+0")
+        # Allow child windows to be resized
+        self.inner_pannel_settings.resizable(True, True)
         # Move to the right of main window
         self.inner_pannel_settings.geometry('+0+0')
         
@@ -946,10 +949,9 @@ class App(Tk):
         # Create drops panel
         self.inner_pannel_drop = Toplevel(self)
         self.inner_pannel_drop.title("Drops")
-        self.inner_pannel_drop.geometry()
-        # Hide maximize and minimize buttons
-        self.inner_pannel_drop.resizable(False, False)
-        self.inner_pannel_drop.attributes('-toolwindow', True)
+        self.inner_pannel_drop.geometry("600x400+0+0")
+        # Allow drops panel to be resized
+        self.inner_pannel_drop.resizable(True, True)
         # Move to the right of main window
         self.inner_pannel_drop.geometry('+0+0')
         inner_pannel_drop_left = ttk.Frame(self.inner_pannel_drop)
@@ -1065,7 +1067,13 @@ class App(Tk):
             # Update UI
             self.label_current_earn.config(text=f"🔥 0")
             self.label_map_count.config(text=f"🎫 0")
-            self.inner_pannel_drop_listbox.delete(1, END)
+            # Clear the drops panel (Text widget) safely
+            try:
+                self.inner_pannel_drop_listbox.config(state='normal')
+                self.inner_pannel_drop_listbox.delete("1.0", END)
+                self.inner_pannel_drop_listbox.config(state='disabled')
+            except Exception:
+                pass
             self.label_initialize_status.config(text="Not initialized")
             
             messagebox.showinfo("Reset Complete", "All tracking data has been reset.")
@@ -1167,22 +1175,27 @@ class App(Tk):
         # Sort by total value descending (highest value first)
         items_to_display.sort(key=lambda x: x[3], reverse=True)
 
-        # Populate listbox in sorted order
+        # Populate drops panel (Text widget) in sorted order with wrapping
         self._list_item_ids = []
-        self.inner_pannel_drop_listbox.delete(1, END)
-        for item_id, item_name, qty, total_value, status in items_to_display:
-            text = f"{status} {item_name} x{qty} [{round(total_value, 2)}]"
-            idx = self.inner_pannel_drop_listbox.size()
-            self._list_item_ids.append(item_id)
-            self.inner_pannel_drop_listbox.insert(END, text)
-            try:
-                if qty > 0:
-                    fg = "#006400"
-                else:
-                    fg = "#b20000"
-                self.inner_pannel_drop_listbox.itemconfig(idx, fg=fg)
-            except Exception:
-                pass
+        try:
+            self.inner_pannel_drop_listbox.config(state='normal')
+            self.inner_pannel_drop_listbox.delete("1.0", END)
+            for item_id, item_name, qty, total_value, status in items_to_display:
+                text = f"{status} {item_name} x{qty} [{round(total_value, 2)}]"
+                before = self.inner_pannel_drop_listbox.index("end-1c")
+                self._list_item_ids.append(item_id)
+                self.inner_pannel_drop_listbox.insert(END, text + "\n")
+                after = self.inner_pannel_drop_listbox.index("end-1c")
+                try:
+                    fg = "#006400" if qty > 0 else "#b20000"
+                    tag = f"item_{item_id}"
+                    self.inner_pannel_drop_listbox.tag_add(tag, before, after)
+                    self.inner_pannel_drop_listbox.tag_config(tag, foreground=fg)
+                except Exception:
+                    pass
+            self.inner_pannel_drop_listbox.config(state='disabled')
+        except Exception:
+            pass
 
     def update_single_drop(self, item_id):
         """Update a single displayed drop line for item_id if present."""
