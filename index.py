@@ -19,10 +19,10 @@ from tkinter import *
 from tkinter.ttk import *
 from tkinter import ttk
 import ctypes
-import requests as rq
+# network requests removed for standalone mode
 import os
-
-server = "serverp.furtorch.heili.tech"
+import shutil
+import uuid
 
 # Initialize configuration
 if not os.path.exists("config.json"):
@@ -30,7 +30,8 @@ if not os.path.exists("config.json"):
         config_data = {
             "opacity": 1.0,
             "tax": 0,
-            "user": ""
+            "user": "",
+            "standalone": False
         }
         json.dump(config_data, f, ensure_ascii=False, indent=4)
 
@@ -105,21 +106,108 @@ def get_price_info(text):
                 num_values = min(len(values), 30)
                 sum_values = sum(float(values[i]) for i in range(num_values))
                 average_value = sum_values / num_values
-                
-            with open("full_table.json", 'r', encoding="utf-8") as f:
-                full_table = json.load(f)
-                try:
+            # If no usable samples were found, skip updating the price
+            if average_value < 0:
+                print(f'Record found: ID:{ids}, no price samples')
+                continue
+
+            try:
+                with open("full_table.json", 'r', encoding="utf-8") as f:
+                    full_table = json.load(f)
+                if ids in full_table:
                     full_table[ids]['last_time'] = round(time.time())
                     full_table[ids]['from'] = "FurryHeiLi"
                     full_table[ids]['price'] = round(average_value, 4)
-                except:
-                    pass
-            with open("full_table.json", 'w', encoding="utf-8") as f:
-                json.dump(full_table, f, indent=4, ensure_ascii=False)
-            print(f'Updating item value: ID:{ids}, Name:{full_table[ids]["name"]}, Price:{round(average_value, 4)}')
+                    with open("full_table.json", 'w', encoding="utf-8") as f:
+                        json.dump(full_table, f, indent=4, ensure_ascii=False)
+                    print(f'Updating item value: ID:{ids}, Name:{full_table[ids].get("name","<unknown>")}, Price:{round(average_value, 4)}')
+                    # Schedule UI refresh on main thread so updated prices show immediately
+                    try:
+                        root.after(0, lambda: root.reshow())
+                    except Exception:
+                        pass
+                else:
+                    print(f'Record found: ID:{ids} not present in full_table.json')
+            except Exception as e:
+                print(f'Failed to update price for ID:{ids}: {e}')
+
             price_submit(ids, round(average_value, 4), get_user())
     except Exception as e:
         print(e)
+
+
+def apply_local_overrides():
+    """Apply overlays from en_id_table.json and translation_mapping.json into full_table.json.
+    Prices in `full_table.json` are authoritative for standalone mode. This function no longer
+    reads or applies `price.json` — edit `full_table.json` directly to change prices.
+    """
+    if not os.path.exists("full_table.json"):
+        return
+    with open("full_table.json", 'r', encoding="utf-8") as f:
+        full = json.load(f)
+    changed = False
+
+    # Overlay en_id_table.json — only add missing entries; do NOT overwrite existing full_table values
+    if os.path.exists("en_id_table.json"):
+        try:
+            with open("en_id_table.json", 'r', encoding="utf-8") as f:
+                en_table = json.load(f)
+            for item_id, en_entry in en_table.items():
+                if item_id not in full:
+                    # add missing entry from en_table
+                    full[item_id] = {
+                        "name": en_entry.get("name", ""),
+                        "type": en_entry.get("type", ""),
+                        "price": en_entry.get("price", 0) if isinstance(en_entry, dict) else 0
+                    }
+                    changed = True
+                else:
+                    # ensure type exists if missing, but do not overwrite name/price
+                    if not full[item_id].get("type") and en_entry.get("type"):
+                        full[item_id]["type"] = en_entry.get("type")
+                        changed = True
+        except Exception:
+            pass
+
+    # Apply translation mapping — only set name when full_table name is empty
+    if os.path.exists("translation_mapping.json"):
+        try:
+            with open("translation_mapping.json", 'r', encoding="utf-8") as f:
+                trans = json.load(f)
+            for item_id, entry in full.items():
+                current_name = entry.get("name", "")
+                # only translate when the full_table name is empty — do not overwrite existing English names
+                if current_name:
+                    continue
+                # find candidate Chinese source
+                cn = None
+                for k in ("cn_name", "zh", "zh_name", "localName"):
+                    if k in entry and isinstance(entry[k], str) and entry[k].strip():
+                        cn = entry[k]
+                        break
+                if not cn:
+                    # if the current name is empty there's no other candidate
+                    cn = None
+                if cn and cn in trans:
+                    en = trans[cn]
+                    if entry.get("name") != en:
+                        full[item_id]["name"] = en
+                        changed = True
+        except Exception:
+            pass
+
+    # Note: prices are taken from full_table.json directly in standalone mode.
+    # If you previously used price.json (Chinese source), remove it — the app will
+    # now ignore it and full_table.json is the single source of truth for prices.
+
+    if changed:
+        try:
+            shutil.copyfile("full_table.json", "full_table.json.bak")
+        except Exception:
+            pass
+        with open("full_table.json", 'w', encoding="utf-8") as f:
+            json.dump(full, f, indent=4, ensure_ascii=False)
+        print("Applied local overrides to full_table.json")
 
 def initialize_bag_state(text):
     """Initialize the bag state by scanning all current items (legacy method)"""
@@ -151,6 +239,24 @@ def initialize_bag_state(text):
             bag_state[item_key] = num
             
         bag_initialized = True
+        # Treat this as a complete initialization so downstream code doesn't
+        # misinterpret the first observed snapshot as drops.
+        try:
+            # Build totals and store as init: keys
+            item_totals = {}
+            for key, qty in bag_state.items():
+                if ":" not in key:
+                    continue
+                parts = key.split(":")
+                if len(parts) != 3:
+                    continue
+                _, _, item_id = parts
+                item_totals[item_id] = item_totals.get(item_id, 0) + qty
+            for item_id, total in item_totals.items():
+                bag_state[f"init:{item_id}"] = total
+        except Exception:
+            pass
+        initialization_complete = True
         return True
     
     return False
@@ -368,6 +474,12 @@ def scan_for_bag_changes(text):
             current_totals[item_id] = 0
         current_totals[item_id] += qty
     
+    # If we had no previous totals (likely first scan), treat this snapshot as baseline
+    if sum(previous_totals.values()) == 0 and sum(current_totals.values()) > 0:
+        # Avoid large false-positive drops on first observed update
+        bag_state.update(current_state)
+        return []
+
     # Compare total counts to detect drops, even across stacks
     for item_id, current_total in current_totals.items():
         previous_total = previous_totals.get(item_id, 0)
@@ -397,6 +509,16 @@ def get_user():
     """Get or register user ID"""
     with open("config.json", "r", encoding="utf-8") as f:
         config_data = json.load(f)
+
+    # If running in standalone mode, don't contact server — generate or reuse a local UUID
+    if config_data.get("standalone", False):
+        if not config_data.get("user"):
+            config_data["user"] = str(uuid.uuid4())
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(config_data, f, ensure_ascii=False, indent=4)
+        return config_data["user"]
+
+    # Network mode: register/get from server if missing
     if not config_data.get("user", False):
         try:
             r = rq.get(f"http://{server}/reg", timeout=10).json()
@@ -412,6 +534,11 @@ def get_user():
 
 def price_submit(ids, price, user):
     try:
+        with open("config.json", "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        if cfg.get("standalone", False):
+            print(f"Standalone mode: skipping price submit for {ids}={price}")
+            return None
         r = rq.get(f"http://{server}/submit?user={user}&ids={ids}&new_price={price}", timeout=10).json()
         print(r)
         return r
@@ -420,29 +547,29 @@ def price_submit(ids, price, user):
 
 def initialize_data_files():
     """Initialize the English data files"""
-    # Check if we need to create full_table.json from en_id_table.json
+    # Create full_table.json from en_id_table.json if missing
     if os.path.exists("en_id_table.json") and not os.path.exists("full_table.json"):
         try:
-            # Load English ID table
             with open("en_id_table.json", 'r', encoding="utf-8") as f:
                 english_items = json.load(f)
-                
-            # Create initial full_table.json with prices set to 0
             full_table = {}
             for item_id, item_data in english_items.items():
                 full_table[item_id] = {
-                    "name": item_data["name"],
-                    "type": item_data["type"],
+                    "name": item_data.get("name", ""),
+                    "type": item_data.get("type", ""),
                     "price": 0
                 }
-                
-            # Save the initial full_table.json
             with open("full_table.json", 'w', encoding="utf-8") as f:
                 json.dump(full_table, f, indent=4, ensure_ascii=False)
-                
             print("Created initial full_table.json from en_id_table.json")
         except Exception as e:
             print(f"Error initializing data files: {e}")
+
+    # Apply local overrides into full_table.json (kept in a separate function)
+    try:
+        apply_local_overrides()
+    except Exception as e:
+        print(f"Failed to apply local overrides: {e}")
 
 # Track bag state and initialization status
 bag_state = {}
@@ -758,6 +885,8 @@ class App(Tk):
         
         self.inner_pannel_drop_listbox = inner_pannel_drop_listbox
         self.inner_pannel_drop_scroll = inner_pannel_drop_scroll
+        # track currently displayed item ids (same order as listbox entries)
+        self._list_item_ids = []
         self.button_change = button_change
         self.words_short = words_short
         self.label_current_time = label_current_time
@@ -803,6 +932,13 @@ class App(Tk):
         # Reset button
         reset_button = ttk.Button(self.inner_pannel_settings, text="Reset Tracking", command=self.reset_tracking)
         reset_button.grid(row=2, column=0, columnspan=2, padx=5, pady=10)
+
+        # Refresh data button (apply local overrides into full_table.json)
+        refresh_button = ttk.Button(self.inner_pannel_settings, text="Refresh Data", command=self.refresh_full_table)
+        refresh_button.grid(row=3, column=0, columnspan=2, padx=5, pady=4)
+        # Small status indicator for last refresh
+        self.refresh_status_label = ttk.Label(self.inner_pannel_settings, text="", font=("Arial", 10))
+        self.refresh_status_label.grid(row=4, column=0, columnspan=2, padx=5, pady=2, sticky="w")
         
         # Setup default values
         self.scale_setting_2.set(config_data["opacity"])
@@ -1002,6 +1138,7 @@ class App(Tk):
         else:
             tmp = drop_list
             self.label_current_earn.config(text=f"🔥 {round(income, 2)}")
+        self._list_item_ids = []
         self.inner_pannel_drop_listbox.delete(1, END)
         for i in tmp.keys():
             item_id = str(i)
@@ -1024,7 +1161,101 @@ class App(Tk):
             item_price = full_table[item_id]["price"]
             if config_data.get("tax", 0) == 1 and item_id != "100300":
                 item_price = item_price * 0.875
-            self.inner_pannel_drop_listbox.insert(END, f"{status} {item_name} x{tmp[i]} [{round(tmp[i] * item_price, 2)}]")
+            text = f"{status} {item_name} x{tmp[i]} [{round(tmp[i] * item_price, 2)}]"
+            # insert and colorize based on gain/consumption
+            idx = self.inner_pannel_drop_listbox.size()
+            # record mapping and insert
+            self._list_item_ids.append(item_id)
+            self.inner_pannel_drop_listbox.insert(END, text)
+            try:
+                qty = tmp[i]
+                if qty > 0:
+                    fg = "#006400"  # dark green
+                else:
+                    fg = "#b20000"  # red
+                self.inner_pannel_drop_listbox.itemconfig(idx, fg=fg)
+            except Exception:
+                pass
+
+    def update_single_drop(self, item_id):
+        """Update a single displayed drop line for item_id if present."""
+        try:
+            item_id = str(item_id)
+            # which dict is currently displayed
+            if show_all:
+                tmp = drop_list_all
+            else:
+                tmp = drop_list
+
+            if item_id not in self._list_item_ids:
+                return
+            idx = self._list_item_ids.index(item_id)
+
+            with open("full_table.json", 'r', encoding="utf-8") as f:
+                full_table = json.load(f)
+
+            if item_id not in full_table:
+                return
+
+            item_name = full_table[item_id].get("name", "<unknown>")
+            item_type = full_table[item_id].get("type", "")
+            if item_type not in self.show_type:
+                # remove line
+                try:
+                    self.inner_pannel_drop_listbox.delete(idx)
+                    self._list_item_ids.pop(idx)
+                except Exception:
+                    pass
+                return
+
+            now = time.time()
+            last_time = full_table[item_id].get("last_update", 0)
+            time_passed = now - last_time
+            if time_passed < 180:
+                status = self.status[0]
+            elif time_passed < 900:
+                status = self.status[1]
+            else:
+                status = self.status[2]
+
+            item_price = full_table[item_id].get("price", 0)
+            if config_data.get("tax", 0) == 1 and item_id != "100300":
+                item_price = item_price * 0.875
+
+            qty = tmp.get(item_id, 0)
+            text = f"{status} {item_name} x{qty} [{round(qty * item_price, 2)}]"
+
+            try:
+                self.inner_pannel_drop_listbox.delete(idx)
+                self.inner_pannel_drop_listbox.insert(idx, text)
+                if qty > 0:
+                    fg = "#006400"
+                else:
+                    fg = "#b20000"
+                self.inner_pannel_drop_listbox.itemconfig(idx, fg=fg)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def refresh_full_table(self):
+        """Apply local overrides and refresh UI."""
+        try:
+            apply_local_overrides()
+            # reload full_table.json into memory for UI
+            with open("full_table.json", 'r', encoding="utf-8") as f:
+                _ = json.load(f)
+            self.reshow()
+            # update small status indicator
+            try:
+                self.refresh_status_label.config(text="Refresh succeeded", foreground="#006400")
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                self.refresh_status_label.config(text=f"Refresh failed: {e}", foreground="#b20000")
+            except Exception:
+                pass
 
     def show_all_type(self):
         self.show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Divine Emblem","Overlap Material", "Hard Currency"]
@@ -1098,56 +1329,7 @@ class MyThread(threading.Thread):
         if self.history:
             self.history.close()
 
-def price_update():
-    """Get price updates from the server and handle translations"""
-    while app_running:
-        try:
-            time.sleep(600)
-            if not app_running:
-                break
-                
-            # Get data from server (in Chinese)
-            response = rq.get(f"http://{server}/get", timeout=10)
-            
-            # Check if response is successful and has content
-            if response.status_code != 200:
-                print(f"Server returned status code: {response.status_code}")
-                time.sleep(60)
-                continue
-                
-            if not response.text.strip():
-                print("Server returned empty response")
-                time.sleep(60)
-                continue
-            
-            # Try to parse JSON
-            try:
-                r = response.json()
-            except json.JSONDecodeError as json_err:
-                print(f"Failed to parse JSON from server. Response content: {response.text[:200]}...")
-                time.sleep(60)
-                continue
-            
-            # Get current data
-            with open("full_table.json", 'r', encoding="utf-8") as f:
-                data = json.load(f)
-                
-            # Update prices from server
-            for item_id, item_data in r.items():
-                if item_id in data:
-                    data[item_id]["price"] = item_data["price"]
-                    data[item_id]["last_update"] = time.time()
-            
-            # Save updated data
-            with open("full_table.json", 'w', encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-                
-            print(f"Updated prices for {len(r)} items from server")
-            # Wait before next update
-            time.sleep(30)
-        except Exception as e:
-            print(f"Error in price update: {e}")
-            time.sleep(60)
+# remote price updates removed — app runs fully standalone
 
 # Initialize data files before starting the application
 initialize_data_files()
@@ -1159,9 +1341,7 @@ root.wm_attributes('-topmost', 1)
 # Start the log reading thread
 MyThread().start()
 
-# Start the price update thread
-import _thread
-_thread.start_new_thread(price_update, ())
+# Remote price updater removed in standalone build
 
 # Start the main loop
 root.mainloop()
