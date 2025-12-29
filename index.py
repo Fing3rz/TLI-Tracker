@@ -19,12 +19,10 @@ from tkinter import *
 from tkinter.ttk import *
 from tkinter import ttk
 import ctypes
-import requests as rq
+# network requests removed for standalone mode
 import os
 import shutil
 import uuid
-
-server = "serverp.furtorch.heili.tech"
 
 # Initialize configuration
 if not os.path.exists("config.json"):
@@ -1208,56 +1206,7 @@ class MyThread(threading.Thread):
         if self.history:
             self.history.close()
 
-def price_update():
-    """Get price updates from the server and handle translations"""
-    while app_running:
-        try:
-            time.sleep(600)
-            if not app_running:
-                break
-                
-            # Get data from server (in Chinese)
-            response = rq.get(f"http://{server}/get", timeout=10)
-            
-            # Check if response is successful and has content
-            if response.status_code != 200:
-                print(f"Server returned status code: {response.status_code}")
-                time.sleep(60)
-                continue
-                
-            if not response.text.strip():
-                print("Server returned empty response")
-                time.sleep(60)
-                continue
-            
-            # Try to parse JSON
-            try:
-                r = response.json()
-            except json.JSONDecodeError as json_err:
-                print(f"Failed to parse JSON from server. Response content: {response.text[:200]}...")
-                time.sleep(60)
-                continue
-            
-            # Get current data
-            with open("full_table.json", 'r', encoding="utf-8") as f:
-                data = json.load(f)
-                
-            # Update prices from server
-            for item_id, item_data in r.items():
-                if item_id in data:
-                    data[item_id]["price"] = item_data["price"]
-                    data[item_id]["last_update"] = time.time()
-            
-            # Save updated data
-            with open("full_table.json", 'w', encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
-                
-            print(f"Updated prices for {len(r)} items from server")
-            # Wait before next update
-            time.sleep(30)
-        except Exception as e:
-            print(f"Error in price update: {e}")
-            time.sleep(60)
+# remote price updates removed — app runs fully standalone
 
 # Initialize data files before starting the application
 initialize_data_files()
@@ -1269,18 +1218,7 @@ root.wm_attributes('-topmost', 1)
 # Start the log reading thread
 MyThread().start()
 
-# Start the price update thread
-import _thread
-try:
-    with open("config.json", "r", encoding="utf-8") as f:
-        _cfg = json.load(f)
-except Exception:
-    _cfg = {}
-
-if not _cfg.get("standalone", False):
-    _thread.start_new_thread(price_update, ())
-else:
-    print("Standalone mode enabled: skipping remote price updates")
+# Remote price updater removed in standalone build
 
 # Start the main loop
 root.mainloop()
