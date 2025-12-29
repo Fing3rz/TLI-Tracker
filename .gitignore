@@ -166,3 +166,10 @@ screenshot.png
 *.zip
 test.py
 input.py
+
+# Exclude debug and log files
+debug_log.txt
+drop.txt
+drops.txt
+*log*
+*.bak
