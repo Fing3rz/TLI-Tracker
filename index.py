@@ -813,7 +813,7 @@ total_time = 0
 map_count = 0
 
 class App(Tk):
-    show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Divine Emblem","Overlap Material","Hard Currency"]
+    show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Memory Fluorescence","Divine Emblem","Overlap Material","Hard Currency"]
     # Checkmark, Circle, X
     status = ["✔", "◯", "✘"]
     
@@ -1258,7 +1258,7 @@ class App(Tk):
                 pass
 
     def show_all_type(self):
-        self.show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Divine Emblem","Overlap Material", "Hard Currency"]
+        self.show_type = ["Compass","Currency","Special Item","Memory Material","Equipment Material","Gameplay Ticket","Map Ticket","Cube Material","Corruption Material","Dream Material","Tower Material","BOSS Ticket","Memory Glow","Memory Fluorescence","Divine Emblem","Overlap Material", "Hard Currency"]
         self.reshow()
     def show_tonghuo(self):
         self.show_type = ["Currency", "Hard Currency"]
