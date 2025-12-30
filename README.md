@@ -4,7 +4,7 @@ My take on the English revamp of FurTorch.
 
 This is a Standalone version, which means we don't use a connection to the FurTorch devs servers for price updates.
 
-It was first translated and fixed with AI by another Dev (see main repository I forked from).
+[It was first translated and fixed with AI by another Dev.](https://github.com/chaseh80/TLI-Tracker)
 
 I'm now fixing every single translation with no AI usage, as well as adding new features.
 
