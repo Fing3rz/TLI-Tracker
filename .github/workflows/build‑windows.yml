@@ -31,12 +31,12 @@ jobs:
         del /q *.spec || exit 0
 
         # Build .exe and include data files
-        pyinstaller --onefile \
-          --name TLI-Tracker \
-          --add-data "full_table.json;." \
-          --add-data "en_id_table.json;." \
-          --add-data "translation_mapping.json;." \
-          --add-data "config.json;." \
+        pyinstaller --onefile `
+          --name TLI-Tracker `
+          --add-data "full_table.json;." `
+          --add-data "en_id_table.json;." `
+          --add-data "translation_mapping.json;." `
+          --add-data "config.json;." `
           index.py
 
     - name: Upload artifact
