@@ -20,13 +20,25 @@ from tkinter.ttk import *
 from tkinter import ttk
 import ctypes
 # network requests removed for standalone mode
+import sys
 import os
 import shutil
 import uuid
 
+def resource_path(relative_path):
+    """Get the correct path to a resource, whether running as script or bundled."""
+    try:
+        # If PyInstaller has bundled this app, this attribute exists:
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Running in normal Python environment
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+    
 # Initialize configuration
 if not os.path.exists("config.json"):
-    with open("config.json", "w", encoding="utf-8") as f:
+    with open(resource_path("config.json"), "w", encoding="utf-8") as f:
         config_data = {
             "opacity": 1.0,
             "tax": 0,
@@ -37,7 +49,7 @@ if not os.path.exists("config.json"):
 
 # Initialize translation mapping
 if not os.path.exists("translation_mapping.json"):
-    with open("translation_mapping.json", "w", encoding="utf-8") as f:
+    with open(resource_path("translation_mapping.json"), "w", encoding="utf-8") as f:
         # Create empty translation mapping
         translation_mapping = {}
         json.dump(translation_mapping, f, ensure_ascii=False, indent=4)
@@ -60,7 +72,7 @@ app_running = True
 def load_translation_mapping():
     """Load or create translation mapping between Chinese and English item names"""
     try:
-        with open("translation_mapping.json", "r", encoding="utf-8") as f:
+        with open(resource_path("translation_mapping.json"), "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         # If the file doesn't exist, create an empty mapping
@@ -68,7 +80,7 @@ def load_translation_mapping():
 
 def save_translation_mapping(mapping):
     """Save translation mapping to file"""
-    with open("translation_mapping.json", "w", encoding="utf-8") as f:
+    with open(resource_path("translation_mapping.json"), "w", encoding="utf-8") as f:
         json.dump(mapping, f, ensure_ascii=False, indent=4)
 
 def get_price_info(text):
@@ -112,13 +124,13 @@ def get_price_info(text):
                 continue
 
             try:
-                with open("full_table.json", 'r', encoding="utf-8") as f:
+                with open(resource_path("full_table.json"), 'r', encoding="utf-8") as f:
                     full_table = json.load(f)
                 if ids in full_table:
                     full_table[ids]['last_time'] = round(time.time())
                     full_table[ids]['from'] = "FurryHeiLi"
                     full_table[ids]['price'] = round(average_value, 4)
-                    with open("full_table.json", 'w', encoding="utf-8") as f:
+                    with open(resource_path("full_table.json"), 'w', encoding="utf-8") as f:
                         json.dump(full_table, f, indent=4, ensure_ascii=False)
                     print(f'Updating item value: ID:{ids}, Name:{full_table[ids].get("name","<unknown>")}, Price:{round(average_value, 4)}')
                     # Schedule UI refresh on main thread so updated prices show immediately
@@ -143,14 +155,14 @@ def apply_local_overrides():
     """
     if not os.path.exists("full_table.json"):
         return
-    with open("full_table.json", 'r', encoding="utf-8") as f:
+    with open(resource_path("full_table.json"), 'r', encoding="utf-8") as f:
         full = json.load(f)
     changed = False
 
     # Overlay en_id_table.json — only add missing entries; do NOT overwrite existing full_table values
     if os.path.exists("en_id_table.json"):
         try:
-            with open("en_id_table.json", 'r', encoding="utf-8") as f:
+            with open(resource_path("en_id_table.json"), 'r', encoding="utf-8") as f:
                 en_table = json.load(f)
             for item_id, en_entry in en_table.items():
                 if item_id not in full:
@@ -172,7 +184,7 @@ def apply_local_overrides():
     # Apply translation mapping — only set name when full_table name is empty
     if os.path.exists("translation_mapping.json"):
         try:
-            with open("translation_mapping.json", 'r', encoding="utf-8") as f:
+            with open(resource_path("translation_mapping.json"), 'r', encoding="utf-8") as f:
                 trans = json.load(f)
             for item_id, entry in full.items():
                 current_name = entry.get("name", "")
@@ -205,7 +217,7 @@ def apply_local_overrides():
             shutil.copyfile("full_table.json", "full_table.json.bak")
         except Exception:
             pass
-        with open("full_table.json", 'w', encoding="utf-8") as f:
+        with open(resource_path("full_table.json"), 'w', encoding="utf-8") as f:
             json.dump(full, f, indent=4, ensure_ascii=False)
         print("Applied local overrides to full_table.json")
 
@@ -507,13 +519,13 @@ def detect_map_change(text):
 
 def get_user():
     """Return local user ID (standalone only)"""
-    with open("config.json", "r", encoding="utf-8") as f:
+    with open(resource_path("config.json"), "r", encoding="utf-8") as f:
         config_data = json.load(f)
 
     # If no user ID exists, generate one
     if not config_data.get("user"):
         config_data["user"] = str(uuid.uuid4())
-        with open("config.json", "w", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=4)
 
     return config_data["user"]
@@ -528,7 +540,7 @@ def initialize_data_files():
     # Create full_table.json from en_id_table.json if missing
     if os.path.exists("en_id_table.json") and not os.path.exists("full_table.json"):
         try:
-            with open("en_id_table.json", 'r', encoding="utf-8") as f:
+            with open(resource_path("en_id_table.json"), 'r', encoding="utf-8") as f:
                 english_items = json.load(f)
             full_table = {}
             for item_id, item_data in english_items.items():
@@ -537,7 +549,7 @@ def initialize_data_files():
                     "type": item_data.get("type", ""),
                     "price": 0
                 }
-            with open("full_table.json", 'w', encoding="utf-8") as f:
+            with open(resource_path("full_table.json"), 'w', encoding="utf-8") as f:
                 json.dump(full_table, f, indent=4, ensure_ascii=False)
             print("Created initial full_table.json from en_id_table.json")
         except Exception as e:
@@ -704,7 +716,7 @@ def deal_change(changed_text):
     id_table = {}
     price_table = {}
     try:
-        with open("full_table.json", 'r', encoding="utf-8") as f:
+        with open(resource_path("full_table.json"), 'r', encoding="utf-8") as f:
             f_data = json.load(f)
             for i in f_data.keys():
                 id_table[str(i)] = f_data[i]["name"]
@@ -746,7 +758,7 @@ def debug_log_format():
         
         # Load item names if available
         try:
-            with open("full_table.json", 'r', encoding="utf-8") as f:
+            with open(resource_path("full_table.json"), 'r', encoding="utf-8") as f:
                 item_data = json.load(f)
             
             print("Item totals:")
@@ -820,7 +832,7 @@ class App(Tk):
         #style.configure("Blue.TFrame", background="#ccccff")
         # Load rate unit from config so labels use correct unit initially
         try:
-            with open("config.json", "r", encoding="utf-8") as _f:
+            with open(resource_path("config.json"), "r", encoding="utf-8") as _f:
                 _cfg = json.load(_f)
         except Exception:
             _cfg = {}
@@ -899,7 +911,7 @@ class App(Tk):
         # Create settings controls
         global config_data
         # Choose tax or no tax
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "r", encoding="utf-8") as f:
             config_data = f.read()
         config_data = json.loads(config_data)
         # Tax setting
@@ -1076,20 +1088,20 @@ class App(Tk):
             
     def change_tax(self, value):
         global config_data
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "r", encoding="utf-8") as f:
             config_data = f.read()
         config_data = json.loads(config_data)
         config_data["tax"] = int(value)
-        with open("config.json", "w", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=4)
 
     def change_rate_unit(self, value):
         global config_data
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "r", encoding="utf-8") as f:
             config_data = f.read()
         config_data = json.loads(config_data)
         config_data["rate_unit"] = int(value)
-        with open("config.json", "w", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=4)
 
     def change_states(self):
@@ -1124,11 +1136,11 @@ class App(Tk):
             this.withdraw()
 
     def change_opacity(self, value):
-        with open("config.json", "r", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "r", encoding="utf-8") as f:
             config_data = f.read()
         config_data = json.loads(config_data)
         config_data["opacity"] = float(value)
-        with open("config.json", "w", encoding="utf-8") as f:
+        with open(resource_path("config.json"), "w", encoding="utf-8") as f:
             json.dump(config_data, f, ensure_ascii=False, indent=4)
         
         # Apply opacity to main window
@@ -1142,7 +1154,7 @@ class App(Tk):
             self.inner_pannel_settings.attributes('-alpha', float(value))
     def reshow(self):
         global drop_list, drop_list_all
-        with open("full_table.json", 'r', encoding="utf-8") as f:
+        with open(resource_path("full_table.json"), 'r', encoding="utf-8") as f:
             full_table = json.load(f)
         self.label_map_count.config(text=f"🎫 {map_count}")
         if show_all:
@@ -1215,7 +1227,7 @@ class App(Tk):
         try:
             apply_local_overrides()
             # reload full_table.json into memory for UI
-            with open("full_table.json", 'r', encoding="utf-8") as f:
+            with open(resource_path("full_table.json"), 'r', encoding="utf-8") as f:
                 _ = json.load(f)
             self.reshow()
             # update small status indicator
