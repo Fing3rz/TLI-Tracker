@@ -24,20 +24,15 @@ jobs:
         pip install pyinstaller
 
     - name: Build executable
+      shell: powershell
       run: |
-        # Clean previous artifacts
-        rmdir /s /q build || exit 0
-        rmdir /s /q dist || exit 0
-        del /q *.spec || exit 0
+        Write-Host "Cleaning old build folders..."
+        Remove-Item -Path build -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path dist -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path *.spec -Force -ErrorAction SilentlyContinue
 
-        # Build .exe and include data files
-        pyinstaller --onefile `
-          --name TLI-Tracker `
-          --add-data "full_table.json;." `
-          --add-data "en_id_table.json;." `
-          --add-data "translation_mapping.json;." `
-          --add-data "config.json;." `
-          index.py
+        Write-Host "Running PyInstaller..."
+        pyinstaller --onefile --name TLI-Tracker --add-data "full_table.json;." --add-data "en_id_table.json;." --add-data "translation_mapping.json;." --add-data "config.json;." index.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
