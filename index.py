@@ -506,44 +506,22 @@ def detect_map_change(text):
     return entering_map, exiting_map
 
 def get_user():
-    """Get or register user ID"""
+    """Return local user ID (standalone only)"""
     with open("config.json", "r", encoding="utf-8") as f:
         config_data = json.load(f)
 
-    # If running in standalone mode, don't contact server — generate or reuse a local UUID
-    if config_data.get("standalone", False):
-        if not config_data.get("user"):
-            config_data["user"] = str(uuid.uuid4())
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(config_data, f, ensure_ascii=False, indent=4)
-        return config_data["user"]
+    # If no user ID exists, generate one
+    if not config_data.get("user"):
+        config_data["user"] = str(uuid.uuid4())
+        with open("config.json", "w", encoding="utf-8") as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=4)
 
-    # Network mode: register/get from server if missing
-    if not config_data.get("user", False):
-        try:
-            r = rq.get(f"http://{server}/reg", timeout=10).json()
-            config_data["user"] = r["user_id"]
-            user_id = r["user_id"]
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(config_data, f, ensure_ascii=False, indent=4)
-        except:
-            user_id = "3b95f1d6-5357-4efb-a96b-8cc3c76b3ee0"
-    else:
-        user_id = config_data["user"]
-    return user_id
+    return config_data["user"]
 
 def price_submit(ids, price, user):
-    try:
-        with open("config.json", "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        if cfg.get("standalone", False):
-            print(f"Standalone mode: skipping price submit for {ids}={price}")
-            return None
-        r = rq.get(f"http://{server}/submit?user={user}&ids={ids}&new_price={price}", timeout=10).json()
-        print(r)
-        return r
-    except Exception as e:
-        print(e)
+    """Standalone stub — skip network price submission."""
+    print(f"Standalone: skipping remote price submit for ID:{ids} price:{price}")
+    return None
 
 def initialize_data_files():
     """Initialize the English data files"""
