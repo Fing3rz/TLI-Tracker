@@ -42,7 +42,7 @@ jobs:
           index.py
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: TLI-Tracker-windows-exe
         path: dist/*.exe
