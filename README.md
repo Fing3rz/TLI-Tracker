@@ -1,37 +1,38 @@
-# FurTorch
+## FURTORCH
+## Usage Instructions
 
-My take on the English revamp of FurTorch.
+1. Before starting the application, make sure to enable logging in Torchlight Infinite:
+   - Open the game
+   - Go to Settings -> Other Settings
+   - Enable logging option
 
-This is a Standalone version, which means we don't use a connection to the FurTorch devs servers for price updates.
+2. Start the application (either run the Python script or the executable)
 
-[It was first translated and fixed with AI by another Dev.](https://github.com/chaseh80/TLI-Tracker)
+3. The application will automatically track:
+   - Time spent in maps
+   - Items dropped
+   - Income per minute
+   - Total earnings
 
-I'm now fixing every single translation with no AI usage, as well as adding new features.
+4. Use the "Drops" button to view detailed drop information
+   - Filter by item type using the buttons on the left
+   - Toggle between current map drops and all-time drops
 
-# New Features from this Fork:
+5. Use the "Settings" button to:
+   - Set the cost per map (will be deducted from profits)
+   - Adjust the window opacity
+   - Set tax calculation preference
 
-## UI Related
+## Notes
 
-- Coloured text for clearer visualization of gains and losses/consumption (Green/Red)
-- Proper translation of every common item in the game (Generic Loot, Compasses, Map Material, Fluorescent Memories, Corrosion Material)
+- The application reads the Torchlight Infinite game log in real-time
+- Item prices are updated automatically from the server
 
-  ## Price Updates in real time
+## Troubleshooting
 
-- - Price Checking in the AH properly updates prices on the Tracker in real time, no need to reload!
+If the application doesn't work:
+- Ensure logging is enabled in the game
+- Check that the game path is correctly detected
+- The game log format may have changed in a game update; check for newer versions of FurTorch
 
-## Code Structure + Standalone Version
-
-- No more usage of the main repositories server to update prices -> this was causing a lot of connection issues and thus prices weren't updating correctly, this is now a Standalone version.
-- Reduced dependency on Chinese AI translation and price mapping -> easier for new devs to hop in and develop new features
-
-## Installation
-
-1. Ensure you have Python installed (version 3.6 or higher, preferably only up to 3.10 for fewer errors)
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-3. Run the English version of the application:
-   ```
-   python index.py
-   ```
+For questions or issues, please submit them on GitHub or contact the developer.
